@@ -168,7 +168,7 @@ export default function DashboardPage() {
   }, [portfolio]);
 
   const tradeLink = (holding: Holding, side: "buy" | "sell") =>
-    `/trade?symbol=${holding.symbol}&asset_type=${holding.asset_type}&side=${side}`;
+    `/trade?symbol=${holding.symbol}&type=${holding.asset_type}&side=${side}`;
 
   if (loading) {
     return (
