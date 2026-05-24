@@ -5,6 +5,13 @@ import {
   getStockHistory,
   searchSymbols,
 } from "../services/marketData";
+import {
+  calculateRSI,
+  calculateRSISeries,
+  calculateSMA,
+  calculateMACD,
+  latestValue,
+} from "../utils/indicators";
 
 const router = Router();
 
@@ -44,7 +51,30 @@ router.get("/history/:symbol", async (req: Request, res: Response) => {
 
   try {
     const history = await getStockHistory(symbol, interval);
-    res.json(history);
+    const closes = history.map((bar) => bar.close);
+
+    const rsiSeries = calculateRSISeries(closes, 14);
+    const sma20Series = calculateSMA(closes, 20);
+    const sma50Series = calculateSMA(closes, 50);
+    const { macd, signal, histogram } = calculateMACD(closes);
+
+    const rsiLatest = calculateRSI(closes, 14);
+    const historyWithRsi = history.map((bar, i) => ({
+      ...bar,
+      rsi: rsiSeries[i],
+    }));
+
+    res.json({
+      history: historyWithRsi,
+      rsi: Number.isNaN(rsiLatest) ? null : rsiLatest,
+      sma20: latestValue(sma20Series),
+      sma50: latestValue(sma50Series),
+      macd: {
+        macd: latestValue(macd),
+        signal: latestValue(signal),
+        histogram: latestValue(histogram),
+      },
+    });
   } catch (err) {
     console.error("History error:", err);
     const message =

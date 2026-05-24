@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ComposedChart,
+  LineChart,
   Bar,
   Line,
   XAxis,
@@ -8,6 +9,7 @@ import {
   Tooltip,
   ResponsiveContainer,
   CartesianGrid,
+  ReferenceLine,
 } from "recharts";
 import type { BarShapeProps } from "recharts";
 import api from "../api/axios";
@@ -25,16 +27,33 @@ interface OhlcvBar {
   low: number;
   close: number;
   volume: number;
+  rsi?: number | null;
+}
+
+interface HistoryResponse {
+  history: OhlcvBar[];
+  rsi: number | null;
+  sma20: number | null;
+  sma50: number | null;
+  macd: {
+    macd: number | null;
+    signal: number | null;
+    histogram: number | null;
+  };
 }
 
 interface ChartRow extends OhlcvBar {
   ma7: number | null;
   ma20: number | null;
+  rsiHigh: number | null;
+  rsiMid: number | null;
+  rsiLow: number | null;
 }
 
 type Period = "1W" | "1M" | "3M";
 
 const CHART_HEIGHT = 360;
+const RSI_HEIGHT = 120;
 const MARGIN = { top: 12, right: 12, left: 8, bottom: 4 };
 
 function formatDate(dateStr: string) {
@@ -53,11 +72,18 @@ function calculateMA(data: OhlcvBar[], period: number): (number | null)[] {
 function enrichData(bars: OhlcvBar[]): ChartRow[] {
   const ma7 = calculateMA(bars, 7);
   const ma20 = calculateMA(bars, 20);
-  return bars.map((bar, i) => ({
-    ...bar,
-    ma7: ma7[i],
-    ma20: ma20[i],
-  }));
+
+  return bars.map((bar, i) => {
+    const rsi = bar.rsi ?? null;
+    return {
+      ...bar,
+      ma7: ma7[i],
+      ma20: ma20[i],
+      rsiHigh: rsi != null && rsi > 70 ? rsi : null,
+      rsiMid: rsi != null && rsi >= 30 && rsi <= 70 ? rsi : null,
+      rsiLow: rsi != null && rsi < 30 ? rsi : null,
+    };
+  });
 }
 
 function sliceForPeriod(bars: OhlcvBar[], period: Period): OhlcvBar[] {
@@ -124,6 +150,28 @@ function ChartTooltip({
       <p className="text-slate-300">L: {d.low.toFixed(2)}</p>
       <p className="text-slate-300">C: {d.close.toFixed(2)}</p>
       <p className="text-slate-400">V: {d.volume.toLocaleString()}</p>
+      {d.rsi != null && (
+        <p className="text-slate-400">RSI: {d.rsi.toFixed(2)}</p>
+      )}
+    </div>
+  );
+}
+
+function RsiTooltip({
+  active,
+  payload,
+}: {
+  active?: boolean;
+  payload?: { payload: ChartRow }[];
+}) {
+  if (!active || !payload?.[0]?.payload) return null;
+  const d = payload[0].payload;
+  if (d.rsi == null) return null;
+
+  return (
+    <div className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs shadow-lg">
+      <p className="font-medium text-white">{formatDate(d.date)}</p>
+      <p className="text-slate-300">RSI: {d.rsi.toFixed(2)}</p>
     </div>
   );
 }
@@ -134,6 +182,7 @@ export default function CandlestickChart({
 }: CandlestickChartProps) {
   const [period, setPeriod] = useState<Period>("1M");
   const [rawData, setRawData] = useState<OhlcvBar[]>([]);
+  const [indicators, setIndicators] = useState<HistoryResponse | null>(null);
   const [currentPrice, setCurrentPrice] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -147,7 +196,7 @@ export default function CandlestickChart({
     try {
       const interval = period === "3M" ? "weekly" : "daily";
       const [historyRes, quoteRes] = await Promise.all([
-        api.get<OhlcvBar[]>(`/market/history/${symbol.toUpperCase()}`, {
+        api.get<HistoryResponse>(`/market/history/${symbol.toUpperCase()}`, {
           params: { interval },
         }),
         api.get<{ price: number }>(
@@ -156,7 +205,8 @@ export default function CandlestickChart({
         ),
       ]);
 
-      setRawData(historyRes.data);
+      setRawData(historyRes.data.history);
+      setIndicators(historyRes.data);
       setCurrentPrice(quoteRes.data.price);
     } catch (err) {
       const message =
@@ -165,6 +215,7 @@ export default function CandlestickChart({
           : "Could not load chart data";
       setError(message);
       setRawData([]);
+      setIndicators(null);
     } finally {
       setLoading(false);
     }
@@ -233,6 +284,8 @@ export default function CandlestickChart({
     maximumFractionDigits: 2,
   });
 
+  const hasRsiData = chartData.some((d) => d.rsi != null);
+
   if (loading) {
     return (
       <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6">
@@ -246,7 +299,7 @@ export default function CandlestickChart({
         </div>
         <div
           className="animate-pulse rounded-lg bg-slate-800"
-          style={{ height: CHART_HEIGHT }}
+          style={{ height: CHART_HEIGHT + RSI_HEIGHT }}
         />
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
@@ -261,7 +314,7 @@ export default function CandlestickChart({
     return (
       <div
         className="flex flex-col items-center justify-center rounded-xl border border-slate-800 bg-slate-900/60 px-6 text-center"
-        style={{ height: CHART_HEIGHT + 80 }}
+        style={{ height: CHART_HEIGHT + RSI_HEIGHT + 80 }}
       >
         <p className="text-red-400">{error}</p>
         <button
@@ -279,7 +332,7 @@ export default function CandlestickChart({
     return (
       <div
         className="flex items-center justify-center rounded-xl border border-slate-800 bg-slate-900/60 text-slate-400"
-        style={{ height: CHART_HEIGHT }}
+        style={{ height: CHART_HEIGHT + RSI_HEIGHT }}
       >
         No chart data available
       </div>
@@ -288,13 +341,31 @@ export default function CandlestickChart({
 
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 sm:p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <h3 className="font-semibold text-white">
-          {symbol.toUpperCase()}{" "}
-          <span className="text-sm font-normal capitalize text-slate-400">
-            {assetType}
-          </span>
-        </h3>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="font-semibold text-white">
+            {symbol.toUpperCase()}{" "}
+            <span className="text-sm font-normal capitalize text-slate-400">
+              {assetType}
+            </span>
+          </h3>
+          {indicators?.rsi != null && (
+            <p className="mt-0.5 text-xs text-slate-500">
+              RSI(14):{" "}
+              <span
+                className={
+                  indicators.rsi > 70
+                    ? "text-red-400"
+                    : indicators.rsi < 30
+                      ? "text-emerald-400"
+                      : "text-slate-300"
+                }
+              >
+                {indicators.rsi.toFixed(2)}
+              </span>
+            </p>
+          )}
+        </div>
         <div className="flex gap-1 rounded-lg border border-slate-700 bg-slate-800/80 p-1">
           {(["1W", "1M", "3M"] as Period[]).map((p) => (
             <button
@@ -314,10 +385,7 @@ export default function CandlestickChart({
       </div>
 
       <ResponsiveContainer width="100%" height={CHART_HEIGHT}>
-        <ComposedChart
-          data={chartData}
-          margin={MARGIN}
-        >
+        <ComposedChart data={chartData} margin={MARGIN}>
           <CartesianGrid
             strokeDasharray="3 3"
             stroke="#1e293b"
@@ -340,11 +408,7 @@ export default function CandlestickChart({
             tickFormatter={(v) => `$${Number(v).toFixed(0)}`}
             width={52}
           />
-          <YAxis
-            yAxisId="volume"
-            domain={[0, volumeMax * 4]}
-            hide
-          />
+          <YAxis yAxisId="volume" domain={[0, volumeMax * 4]} hide />
           <Tooltip content={<ChartTooltip />} />
           <Bar
             yAxisId="volume"
@@ -381,6 +445,76 @@ export default function CandlestickChart({
         </ComposedChart>
       </ResponsiveContainer>
 
+      {hasRsiData && (
+        <div className="mt-2 border-t border-slate-800 pt-3">
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
+            RSI (14)
+          </p>
+          <ResponsiveContainer width="100%" height={RSI_HEIGHT}>
+            <LineChart data={chartData} margin={{ ...MARGIN, top: 8 }}>
+              <CartesianGrid
+                strokeDasharray="3 3"
+                stroke="#1e293b"
+                vertical={false}
+              />
+              <XAxis
+                dataKey="date"
+                tickFormatter={formatDate}
+                tick={{ fill: "#64748b", fontSize: 10 }}
+                axisLine={{ stroke: "#334155" }}
+                tickLine={false}
+                minTickGap={24}
+              />
+              <YAxis
+                domain={[0, 100]}
+                tick={{ fill: "#64748b", fontSize: 10 }}
+                axisLine={false}
+                tickLine={false}
+                width={40}
+                ticks={[30, 50, 70]}
+              />
+              <Tooltip content={<RsiTooltip />} />
+              <ReferenceLine
+                y={70}
+                stroke="#ef4444"
+                strokeDasharray="4 4"
+                strokeOpacity={0.7}
+              />
+              <ReferenceLine
+                y={30}
+                stroke="#10b981"
+                strokeDasharray="4 4"
+                strokeOpacity={0.7}
+              />
+              <Line
+                type="monotone"
+                dataKey="rsiHigh"
+                stroke="#ef4444"
+                strokeWidth={1.5}
+                dot={false}
+                connectNulls={false}
+              />
+              <Line
+                type="monotone"
+                dataKey="rsiMid"
+                stroke="#94a3b8"
+                strokeWidth={1.5}
+                dot={false}
+                connectNulls={false}
+              />
+              <Line
+                type="monotone"
+                dataKey="rsiLow"
+                stroke="#10b981"
+                strokeWidth={1.5}
+                dot={false}
+                connectNulls={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
       <div className="mt-2 flex flex-wrap gap-4 text-xs text-slate-400">
         <span className="flex items-center gap-1.5">
           <span className="h-0.5 w-4 bg-amber-500" />
@@ -389,6 +523,18 @@ export default function CandlestickChart({
         <span className="flex items-center gap-1.5">
           <span className="h-0.5 w-4 bg-violet-500" />
           MA (20)
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-0.5 w-4 bg-red-400" />
+          RSI &gt; 70
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-0.5 w-4 bg-slate-400" />
+          RSI 30–70
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-0.5 w-4 bg-emerald-400" />
+          RSI &lt; 30
         </span>
       </div>
 
