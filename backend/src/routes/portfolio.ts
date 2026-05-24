@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { pool } from "../db";
 import { authenticate } from "../middleware/auth";
 import { getStockQuote, getCryptoQuote } from "../services/marketData";
+import { STARTING_PORTFOLIO_VALUE } from "../constants";
 
 const router = Router();
 const TRADES_PER_PAGE = 20;
@@ -50,6 +51,55 @@ async function getUserPortfolio(userId: number): Promise<PortfolioRow | null> {
 
   return result.rows[0] ?? null;
 }
+
+router.get("/performance", async (req: Request, res: Response) => {
+  try {
+    const portfolio = await getUserPortfolio(req.user!.id);
+
+    if (!portfolio) {
+      res.status(404).json({ message: "Portfolio not found" });
+      return;
+    }
+
+    const result = await pool.query(
+      `SELECT id, portfolio_id, total_value, cash_balance, recorded_at
+       FROM portfolio_snapshots
+       WHERE portfolio_id = $1
+       ORDER BY recorded_at ASC`,
+      [portfolio.id]
+    );
+
+    const snapshots = result.rows.map((row) => {
+      const totalValue = parseFloat(row.total_value);
+      const percentReturn =
+        ((totalValue - STARTING_PORTFOLIO_VALUE) / STARTING_PORTFOLIO_VALUE) *
+        100;
+
+      return {
+        id: row.id,
+        portfolio_id: row.portfolio_id,
+        total_value: totalValue,
+        cash_balance: parseFloat(row.cash_balance),
+        recorded_at: row.recorded_at,
+        percent_return: parseFloat(percentReturn.toFixed(2)),
+      };
+    });
+
+    const latest = snapshots[snapshots.length - 1];
+    const currentPercentReturn = latest
+      ? latest.percent_return
+      : 0;
+
+    res.json({
+      starting_value: STARTING_PORTFOLIO_VALUE,
+      snapshots,
+      current_percent_return: currentPercentReturn,
+    });
+  } catch (err) {
+    console.error("Portfolio performance error:", err);
+    res.status(500).json({ message: "Failed to fetch portfolio performance" });
+  }
+});
 
 router.get("/trades", async (req: Request, res: Response) => {
   const page = Math.max(1, parseInt(String(req.query.page ?? "1"), 10) || 1);

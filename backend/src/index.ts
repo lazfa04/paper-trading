@@ -7,6 +7,7 @@ import marketRoutes from "./routes/market";
 import tradeRoutes from "./routes/trades";
 import portfolioRoutes from "./routes/portfolio";
 import watchlistRoutes from "./routes/watchlist";
+import { startSnapshotCron } from "./jobs/snapshotCron";
 
 dotenv.config();
 
@@ -28,4 +29,5 @@ app.use("/api/watchlist", watchlistRoutes);
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
+  startSnapshotCron();
 });

@@ -12,6 +12,7 @@ import { RefreshCw, TrendingUp } from "lucide-react";
 import api from "../api/axios";
 import { useAuth } from "../context/AuthContext";
 import axios from "axios";
+import PerformanceChart from "../components/PerformanceChart";
 
 interface Holding {
   symbol: string;
@@ -295,7 +296,9 @@ export default function DashboardPage() {
             </div>
 
             <div className="grid gap-8 lg:grid-cols-3">
-              <div className="lg:col-span-2">
+              <div className="space-y-8 lg:col-span-2">
+                <PerformanceChart />
+
                 <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900/60">
                   <div className="border-b border-slate-800 px-6 py-4">
                     <h2 className="font-semibold text-white">Holdings</h2>

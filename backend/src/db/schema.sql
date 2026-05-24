@@ -46,4 +46,14 @@ CREATE TABLE IF NOT EXISTS watchlist (
 CREATE INDEX IF NOT EXISTS idx_portfolios_user_id ON portfolios(user_id);
 CREATE INDEX IF NOT EXISTS idx_holdings_portfolio_id ON holdings(portfolio_id);
 CREATE INDEX IF NOT EXISTS idx_trades_portfolio_id ON trades(portfolio_id);
+CREATE TABLE IF NOT EXISTS portfolio_snapshots (
+  id SERIAL PRIMARY KEY,
+  portfolio_id INTEGER NOT NULL REFERENCES portfolios(id) ON DELETE CASCADE,
+  total_value DECIMAL(15, 2) NOT NULL,
+  cash_balance DECIMAL(15, 2) NOT NULL,
+  recorded_at TIMESTAMP DEFAULT NOW()
+);
+
 CREATE INDEX IF NOT EXISTS idx_watchlist_user_id ON watchlist(user_id);
+CREATE INDEX IF NOT EXISTS idx_portfolio_snapshots_portfolio_id ON portfolio_snapshots(portfolio_id);
+CREATE INDEX IF NOT EXISTS idx_portfolio_snapshots_recorded_at ON portfolio_snapshots(recorded_at);
