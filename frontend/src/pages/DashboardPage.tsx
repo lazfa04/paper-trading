@@ -8,11 +8,13 @@ import {
   Legend,
   Tooltip,
 } from "recharts";
-import { RefreshCw, TrendingUp } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import api from "../api/axios";
 import { useAuth } from "../context/AuthContext";
+import { useToast } from "../context/ToastContext";
 import axios from "axios";
 import PerformanceChart from "../components/PerformanceChart";
+import { Skeleton } from "../components/ui/Skeleton";
 
 interface Holding {
   symbol: string;
@@ -72,12 +74,6 @@ function pnlClass(value: number) {
   return "text-slate-400";
 }
 
-function Skeleton({ className = "" }: { className?: string }) {
-  return (
-    <div className={`animate-pulse rounded-lg bg-slate-800 ${className}`} />
-  );
-}
-
 function StatsSkeleton() {
   return (
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -109,6 +105,7 @@ function TableSkeleton() {
 
 export default function DashboardPage() {
   const { user } = useAuth();
+  const { showToast } = useToast();
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [recentTrades, setRecentTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(true);
@@ -134,11 +131,12 @@ export default function DashboardPage() {
           ? String(err.response.data.message)
           : "Failed to load portfolio data.";
       setError(message);
+      showToast(message, "error");
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [showToast]);
 
   useEffect(() => {
     fetchData();
@@ -173,88 +171,45 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950">
-        <header className="border-b border-slate-800 bg-slate-900/50 px-6 py-4">
-          <Skeleton className="h-8 w-48" />
-        </header>
-        <main className="mx-auto max-w-7xl space-y-8 px-4 py-8 sm:px-6">
-          <StatsSkeleton />
-          <div className="grid gap-8 lg:grid-cols-3">
-            <div className="lg:col-span-2">
-              <TableSkeleton />
-            </div>
-            <div className="space-y-8">
-              <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6">
-                <Skeleton className="mb-4 h-6 w-40" />
-                <Skeleton className="mx-auto h-48 w-48 rounded-full" />
-              </div>
-              <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6">
-                <Skeleton className="mb-4 h-6 w-32" />
-                <div className="space-y-3">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <Skeleton key={i} className="h-12 w-full" />
-                  ))}
-                </div>
-              </div>
-            </div>
+      <div className="space-y-8">
+        <StatsSkeleton />
+        <div className="grid gap-8 lg:grid-cols-3">
+          <div className="space-y-8 lg:col-span-2">
+            <Skeleton className="h-64" />
+            <TableSkeleton />
           </div>
-        </main>
+          <div className="space-y-8">
+            <Skeleton className="h-72" />
+            <Skeleton className="h-48" />
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-950">
-      <header className="border-b border-slate-800 bg-slate-900/50 px-4 py-4 sm:px-6">
-        <div className="mx-auto flex max-w-7xl items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500/10">
-              <TrendingUp className="h-5 w-5 text-emerald-400" />
-            </div>
-            <div>
-              <h1 className="text-lg font-semibold text-white">Dashboard</h1>
-              <p className="text-sm text-slate-400">
-                Welcome back, {user?.username ?? "trader"}
-              </p>
-            </div>
+    <div className="space-y-8">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-semibold text-white sm:text-2xl">
+              Dashboard
+            </h1>
+            <p className="text-sm text-slate-400">
+              Welcome back, {user?.username ?? "trader"}
+            </p>
           </div>
-          <div className="flex items-center gap-3">
-            <nav className="hidden gap-4 text-sm sm:flex">
-              <Link
-                to="/dashboard"
-                className="font-medium text-emerald-400"
-              >
-                Dashboard
-              </Link>
-              <Link
-                to="/trade"
-                className="text-slate-400 transition hover:text-white"
-              >
-                Trade
-              </Link>
-              <Link
-                to="/watchlist"
-                className="text-slate-400 transition hover:text-white"
-              >
-                Watchlist
-              </Link>
-            </nav>
-            <button
-              type="button"
-              onClick={() => fetchData(true)}
-              disabled={refreshing}
-              className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 transition hover:border-emerald-500/50 hover:text-white disabled:opacity-50"
-            >
-              <RefreshCw
-                className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`}
-              />
-              Refresh Prices
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => fetchData(true)}
+            disabled={refreshing}
+            className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 transition hover:border-emerald-500/50 hover:text-white disabled:opacity-50"
+          >
+            <RefreshCw
+              className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`}
+            />
+            Refresh Prices
+          </button>
         </div>
-      </header>
-
-      <main className="mx-auto max-w-7xl space-y-8 px-4 py-8 sm:px-6">
         {error && (
           <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
             {error}
@@ -305,9 +260,9 @@ export default function DashboardPage() {
                   </div>
                   {portfolio.holdings.length === 0 ? (
                     <p className="px-6 py-10 text-center text-slate-400">
-                      No holdings yet.{" "}
+                      You don&apos;t own any assets yet.{" "}
                       <Link to="/trade" className="text-emerald-400 hover:underline">
-                        Start trading
+                        Start trading!
                       </Link>
                     </p>
                   ) : (
@@ -524,7 +479,6 @@ export default function DashboardPage() {
             </div>
           </>
         )}
-      </main>
     </div>
   );
 }

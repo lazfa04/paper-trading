@@ -2,36 +2,36 @@ import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { TrendingUp } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { useToast } from "../context/ToastContext";
 import axios from "axios";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function RegisterPage() {
   const { register } = useAuth();
+  const { showToast } = useToast();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    setError("");
 
     if (!EMAIL_REGEX.test(email)) {
-      setError("Please enter a valid email address.");
+      showToast("Please enter a valid email address.", "error");
       return;
     }
 
     if (password.length < 6) {
-      setError("Password must be at least 6 characters.");
+      showToast("Password must be at least 6 characters.", "error");
       return;
     }
 
     if (password !== confirmPassword) {
-      setError("Passwords do not match.");
+      showToast("Passwords do not match.", "error");
       return;
     }
 
@@ -39,13 +39,14 @@ export default function RegisterPage() {
 
     try {
       await register(email, username, password);
+      showToast("Account created! $10,000 virtual cash added.", "success");
       navigate("/dashboard");
     } catch (err) {
       const message =
         axios.isAxiosError(err) && err.response?.data?.message
           ? String(err.response.data.message)
           : "Registration failed. Please try again.";
-      setError(message);
+      showToast(message, "error");
     } finally {
       setSubmitting(false);
     }
@@ -68,12 +69,6 @@ export default function RegisterPage() {
           onSubmit={handleSubmit}
           className="rounded-2xl border border-slate-800 bg-slate-900/80 p-8 shadow-xl shadow-black/20"
         >
-          {error && (
-            <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
-              {error}
-            </div>
-          )}
-
           <label className="mb-4 block">
             <span className="mb-1.5 block text-sm font-medium text-slate-300">
               Email

@@ -5,10 +5,12 @@ import {
   useState,
   type MouseEvent as ReactMouseEvent,
 } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { Plus, Search, Trash2, TrendingUp } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Plus, Search, Trash2 } from "lucide-react";
 import axios from "axios";
 import api from "../api/axios";
+import { useToast } from "../context/ToastContext";
+import { Skeleton } from "../components/ui/Skeleton";
 
 interface WatchlistItem {
   id: number;
@@ -50,6 +52,7 @@ const currency = new Intl.NumberFormat("en-US", {
 
 export default function WatchlistPage() {
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const [items, setItems] = useState<WatchlistItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -160,12 +163,14 @@ export default function WatchlistPage() {
       setSearchQuery("");
       setSearchOpen(false);
       setLastUpdated(new Date());
+      showToast(`${result.symbol} added to watchlist`, "success");
     } catch (err) {
       const message =
         axios.isAxiosError(err) && err.response?.data?.message
           ? String(err.response.data.message)
           : "Failed to add symbol.";
       setAddError(message);
+      showToast(message, "error");
     } finally {
       setAdding(false);
     }
@@ -179,8 +184,9 @@ export default function WatchlistPage() {
     try {
       await api.delete(`/watchlist/${symbol}`);
       setItems((prev) => prev.filter((i) => i.symbol !== symbol));
+      showToast(`${symbol} removed from watchlist`, "info");
     } catch {
-      /* ignore */
+      showToast("Failed to remove symbol", "error");
     }
   };
 
@@ -189,46 +195,20 @@ export default function WatchlistPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950">
-      <header className="border-b border-slate-800 bg-slate-900/50 px-4 py-4 sm:px-6">
-        <div className="mx-auto flex max-w-7xl items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500/10">
-              <TrendingUp className="h-5 w-5 text-emerald-400" />
-            </div>
-            <div>
-              <h1 className="text-lg font-semibold text-white">Watchlist</h1>
-              <p className="text-sm text-slate-400">
-                Track stocks and crypto
-                {lastUpdated && (
-                  <span className="ml-2 text-slate-500">
-                    · Last updated: {secondsAgo}s ago
-                  </span>
-                )}
-              </p>
-            </div>
-          </div>
-          <nav className="hidden gap-4 text-sm sm:flex">
-            <Link
-              to="/dashboard"
-              className="text-slate-400 transition hover:text-white"
-            >
-              Dashboard
-            </Link>
-            <Link
-              to="/trade"
-              className="text-slate-400 transition hover:text-white"
-            >
-              Trade
-            </Link>
-            <Link to="/watchlist" className="font-medium text-emerald-400">
-              Watchlist
-            </Link>
-          </nav>
+    <div className="space-y-6">
+        <div>
+          <h1 className="text-xl font-semibold text-white sm:text-2xl">
+            Watchlist
+          </h1>
+          <p className="text-sm text-slate-400">
+            Track stocks and crypto
+            {lastUpdated && (
+              <span className="ml-2 text-slate-500">
+                · Last updated: {secondsAgo}s ago
+              </span>
+            )}
+          </p>
         </div>
-      </header>
-
-      <main className="mx-auto max-w-7xl space-y-6 px-4 py-8 sm:px-6">
         {/* Add symbol search */}
         <section
           ref={searchRef}
@@ -289,10 +269,7 @@ export default function WatchlistPage() {
           {loading ? (
             <div className="space-y-3 p-6">
               {Array.from({ length: 4 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="h-10 animate-pulse rounded-lg bg-slate-800"
-                />
+                <Skeleton key={i} className="h-10" />
               ))}
             </div>
           ) : items.length === 0 ? (
@@ -302,7 +279,65 @@ export default function WatchlistPage() {
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+            <div className="space-y-3 p-4 md:hidden">
+              {items.map((item) => {
+                const changePct = item.change_percent ?? 0;
+                return (
+                  <div
+                    key={item.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => goToTrade(item)}
+                    onKeyDown={(e) =>
+                      e.key === "Enter" && goToTrade(item)
+                    }
+                    className="cursor-pointer rounded-lg border border-slate-800 bg-slate-800/40 p-4 transition hover:border-slate-700"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="font-semibold text-white">
+                          {item.symbol}
+                        </p>
+                        <p className="text-xs text-slate-400">
+                          {item.name ?? "—"} · {item.asset_type}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => handleRemove(e, item.symbol)}
+                        className="rounded-md p-1.5 text-slate-500 hover:bg-red-500/20 hover:text-red-400"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                      <div>
+                        <p className="text-xs text-slate-500">Price</p>
+                        <p className="font-mono text-white">
+                          {currency.format(item.price)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500">Change %</p>
+                        <p
+                          className={`font-mono font-medium ${
+                            item.change_percent != null
+                              ? pnlClass(changePct)
+                              : "text-slate-500"
+                          }`}
+                        >
+                          {item.change_percent != null
+                            ? `${changePct >= 0 ? "+" : ""}${changePct.toFixed(2)}%`
+                            : "—"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="hidden overflow-x-auto md:block">
               <table className="w-full min-w-[800px] text-left text-sm">
                 <thead>
                   <tr className="border-b border-slate-800 text-slate-400">
@@ -397,9 +432,9 @@ export default function WatchlistPage() {
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </section>
-      </main>
     </div>
   );
 }

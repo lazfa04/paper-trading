@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Search, TrendingUp, X } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { Search } from "lucide-react";
 import axios from "axios";
 import api from "../api/axios";
 import CandlestickChart from "../components/CandlestickChart";
+import { useToast } from "../context/ToastContext";
+import { Skeleton } from "../components/ui/Skeleton";
 
 interface StockQuote {
   symbol: string;
@@ -76,7 +78,7 @@ export default function TradePage() {
   const [quoteLoading, setQuoteLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
-  const [toast, setToast] = useState<string | null>(null);
+  const { showToast } = useToast();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
@@ -174,12 +176,6 @@ export default function TradePage() {
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
-  useEffect(() => {
-    if (!toast) return;
-    const timer = setTimeout(() => setToast(null), 5000);
-    return () => clearTimeout(timer);
-  }, [toast]);
-
   const navigateToSymbol = (sym: string, type: string) => {
     const normalized = normalizeAssetType(type);
     setSearchParams({ symbol: sym.toUpperCase(), type: normalized });
@@ -217,11 +213,12 @@ export default function TradePage() {
       if (side === "sell" && data.profit_loss != null) {
         const pnl = Number(data.profit_loss);
         const sign = pnl >= 0 ? "+" : "";
-        setToast(
-          `Sold ${qtyNum} ${symbol} — P&L: ${sign}${currency.format(pnl)}`
+        showToast(
+          `Sold ${qtyNum} ${symbol} — P&L: ${sign}${currency.format(pnl)}`,
+          pnl >= 0 ? "success" : "info"
         );
       } else {
-        setToast(`Bought ${qtyNum} ${symbol} successfully`);
+        showToast(`Bought ${qtyNum} ${symbol} successfully`, "success");
       }
 
       setQuantity("");
@@ -231,6 +228,7 @@ export default function TradePage() {
           ? String(err.response.data.message)
           : "Trade failed. Please try again.";
       setFormError(message);
+      showToast(message, "error");
     } finally {
       setSubmitting(false);
     }
@@ -246,51 +244,9 @@ export default function TradePage() {
     : (quote as CryptoQuote | null)?.lastRefreshed;
 
   return (
-    <div className="min-h-screen bg-[#0a0e17] font-sans text-slate-200">
-      {toast && (
-        <div className="fixed bottom-6 right-6 z-50 max-w-sm rounded-lg border border-emerald-500/40 bg-slate-900 px-4 py-3 text-sm text-emerald-300 shadow-xl">
-          {toast}
-          <button
-            type="button"
-            onClick={() => setToast(null)}
-            className="ml-3 text-slate-500 hover:text-white"
-          >
-            <X className="inline h-4 w-4" />
-          </button>
-        </div>
-      )}
-
-      <header className="border-b border-slate-800/80 bg-[#0d1219] px-4 py-3 sm:px-6">
-        <div className="mx-auto flex max-w-[1600px] items-center justify-between">
-          <div className="flex items-center gap-3">
-            <TrendingUp className="h-5 w-5 text-emerald-400" />
-            <span className="text-sm font-semibold tracking-wide text-white">
-              TRADE TERMINAL
-            </span>
-          </div>
-          <nav className="flex gap-4 text-xs uppercase tracking-wider">
-            <Link
-              to="/dashboard"
-              className="text-slate-500 transition hover:text-emerald-400"
-            >
-              Dashboard
-            </Link>
-            <Link to="/trade" className="text-emerald-400">
-              Trade
-            </Link>
-            <Link
-              to="/watchlist"
-              className="text-slate-500 transition hover:text-emerald-400"
-            >
-              Watchlist
-            </Link>
-          </nav>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-[1600px] space-y-4 px-4 py-4 sm:px-6">
+    <div className="space-y-4 font-sans text-slate-200">
         {/* Quote panel */}
-        <section className="rounded-lg border border-slate-800 bg-[#0d1219] px-5 py-4">
+        <section className="rounded-xl border border-slate-800 bg-slate-900/60 px-5 py-4">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
               <div className="flex items-baseline gap-3">
@@ -302,7 +258,7 @@ export default function TradePage() {
                 </span>
               </div>
               {quoteLoading ? (
-                <div className="mt-2 h-10 w-32 animate-pulse rounded bg-slate-800" />
+                <Skeleton className="mt-2 h-10 w-32" />
               ) : quote ? (
                 <p className="mt-1 font-mono text-4xl font-semibold text-white">
                   {currency.format(quote.price)}
@@ -355,12 +311,12 @@ export default function TradePage() {
         </section>
 
         {/* Chart + order form */}
-        <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
+        <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[1fr_320px]">
           <section className="min-w-0">
             <CandlestickChart symbol={symbol} assetType={assetType} />
           </section>
 
-          <aside className="rounded-lg border border-slate-800 bg-[#0d1219] p-5">
+          <aside className="rounded-xl border border-slate-800 bg-slate-900/60 p-5">
             <div className="mb-4 flex rounded-lg border border-slate-700 p-1">
               <button
                 type="button"
@@ -465,7 +421,7 @@ export default function TradePage() {
         {/* Symbol search */}
         <section
           ref={searchRef}
-          className="relative rounded-lg border border-slate-800 bg-[#0d1219] p-4"
+          className="relative rounded-xl border border-slate-800 bg-slate-900/60 p-4"
         >
           <label className="flex items-center gap-2">
             <Search className="h-4 w-4 text-slate-500" />
@@ -503,7 +459,6 @@ export default function TradePage() {
             </ul>
           )}
         </section>
-      </main>
     </div>
   );
 }
