@@ -3,9 +3,11 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { Search } from "lucide-react";
 import axios from "axios";
 import api from "../api/axios";
+import AITradeInsight from "../components/AITradeInsight";
 import CandlestickChart from "../components/CandlestickChart";
 import { useToast } from "../context/ToastContext";
 import { Skeleton } from "../components/ui/Skeleton";
+import type { TradeObject } from "../types/trade";
 
 interface StockQuote {
   symbol: string;
@@ -54,6 +56,14 @@ function parseChangePercent(value: string): number {
   return parseFloat(value.replace("%", "").trim()) || 0;
 }
 
+function portfolioTotalValue(portfolio: Portfolio): number {
+  const holdingsValue = portfolio.holdings.reduce(
+    (sum, h) => sum + h.quantity * h.current_price,
+    0
+  );
+  return portfolio.cash_balance + holdingsValue;
+}
+
 const currency = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
@@ -78,6 +88,9 @@ export default function TradePage() {
   const [quoteLoading, setQuoteLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
+  const [insightTrade, setInsightTrade] = useState<TradeObject | null>(
+    null
+  );
   const { showToast } = useToast();
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -207,8 +220,30 @@ export default function TradePage() {
         quantity: qtyNum,
       });
 
-      await fetchPortfolio();
+      const { data: freshPortfolio } = await api.get<Portfolio>("/portfolio");
+      setPortfolio(freshPortfolio);
       await fetchQuote();
+
+      const tradePrice = price;
+      const totalValue = qtyNum * tradePrice;
+
+      setInsightTrade({
+        symbol,
+        asset_type: assetType,
+        trade_type: side,
+        quantity: qtyNum,
+        price: tradePrice,
+        total_value: totalValue,
+        profit_loss:
+          side === "sell" && data.profit_loss != null
+            ? Number(data.profit_loss)
+            : undefined,
+        portfolio_context: {
+          total_portfolio_value: portfolioTotalValue(freshPortfolio),
+          cash_balance: freshPortfolio.cash_balance,
+          holdings_count: freshPortfolio.holdings.length,
+        },
+      });
 
       if (side === "sell" && data.profit_loss != null) {
         const pnl = Number(data.profit_loss);
@@ -459,6 +494,13 @@ export default function TradePage() {
             </ul>
           )}
         </section>
+
+      {insightTrade && (
+        <AITradeInsight
+          trade={insightTrade}
+          onClose={() => setInsightTrade(null)}
+        />
+      )}
     </div>
   );
 }
